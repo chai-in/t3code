@@ -16,7 +16,7 @@ const legacyFailures = {
   },
   subscription_sharing_unsupported_capability: {
     message:
-      "Codex used a feature that ChatGPT sharing does not support. Use another provider for this request.",
+      "Codex used a feature that ChatGPT sharing does not support, commonly a native subagent. Keep the work on this turn, or use another provider.",
   },
   subscription_sharing_v2_client_not_enabled: {
     message:
@@ -73,6 +73,13 @@ export function classifyCodexManagedError(value: unknown) {
           code,
           message:
             "Codex sent an input item that ChatGPT sharing does not support. Use another provider for this request.",
+        };
+      if (/subAgent|spawn_agent|collabAgent/iu.test(text))
+        return {
+          ...failure,
+          code,
+          message:
+            "Codex started a native subagent that ChatGPT sharing does not support. Keep the work on this turn with delegate_task, or use another provider.",
         };
     }
     return { ...failure, code };

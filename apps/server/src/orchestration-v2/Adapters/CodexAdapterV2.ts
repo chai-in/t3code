@@ -732,6 +732,8 @@ export const buildCodexTurnStartParams = Effect.fn("CodexAdapterV2.buildCodexTur
     readonly deviceToolsAvailable?: boolean;
     /** ChatGPT token sharing does not accept service tiers. */
     readonly omitServiceTier?: boolean;
+    /** ChatGPT token sharing rejects native spawn_agent child items. */
+    readonly nativeSubagentsAvailable?: boolean;
     readonly appContext?: ProviderAdapter.ProviderAdapterV2TurnInput["appContext"];
   }) {
     const runtimeModeDefaults = codexRuntimeModeTurnDefaults(input.runtimePolicy.runtimeMode);
@@ -767,6 +769,7 @@ export const buildCodexTurnStartParams = Effect.fn("CodexAdapterV2.buildCodexTur
               browser: input.browserToolsAvailable ?? true,
               device: input.deviceToolsAvailable ?? false,
             },
+            { nativeSubagents: input.nativeSubagentsAvailable !== false },
           )
         : undefined;
     const additionalContext =
@@ -6499,6 +6502,7 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
               browserToolsAvailable: mcpSession?.browserToolsAvailable ?? true,
               deviceToolsAvailable: mcpSession?.capabilities?.has("device") ?? false,
               omitServiceTier: adapterOptions.resolveRuntime !== undefined,
+              nativeSubagentsAvailable: adapterOptions.resolveRuntime === undefined,
               ...(turnInput.appContext === undefined ? {} : { appContext: turnInput.appContext }),
             });
             yield* Ref.update(pendingRootTurns, (current) => {

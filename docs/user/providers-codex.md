@@ -10,7 +10,9 @@ OpenAI and allow sharing of your ChatGPT plan.
 
 Manage shared usage and credits in ChatGPT through **Manage usage** in T3 Code.
 If a request uses a feature that ChatGPT sharing does not support, use another
-provider for that request.
+provider for that request. ChatGPT sharing cannot run Codex native subagents;
+T3 disables them on a managed ChatGPT connection and routes that work through
+`delegate_task`.
 
 When reconnecting, choose the same account in T3 Code and on OpenAI's sign-in
 page. Disconnecting stops running threads but keeps their history and lets you

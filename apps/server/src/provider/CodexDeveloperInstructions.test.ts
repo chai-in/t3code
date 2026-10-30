@@ -57,11 +57,20 @@ describe("Codex runtime context", () => {
 });
 
 describe("Codex orchestration context", () => {
-  it("routes subagents native first, delegate_task for the rest", () => {
-    const orchestration = Object.entries(buildCodexAdditionalContext({ model: "gpt-6.1-sol" }))
+  const orchestrationText = (nativeSubagents?: boolean) =>
+    Object.entries(
+      buildCodexAdditionalContext(
+        { model: "gpt-6.1-sol" },
+        true,
+        nativeSubagents === undefined ? undefined : { nativeSubagents },
+      ),
+    )
       .filter(([key]) => key.startsWith("t3_code_orchestration_"))
       .map(([, entry]) => entry.value)
       .join("\n");
+
+  it("routes subagents native first, delegate_task for the rest", () => {
+    const orchestration = orchestrationText();
 
     NodeAssert.ok(orchestration.includes("use your native tool when the child uses your provider"));
     NodeAssert.ok(orchestration.includes("`run_in_background:false`"));
@@ -74,6 +83,14 @@ describe("Codex orchestration context", () => {
     NodeAssert.ok(!orchestration.includes("Prefer native"));
     // The ACP terminal fallback is ACP-only; Codex agents never need it.
     NodeAssert.ok(!orchestration.includes("acp-mcp-call"));
+  });
+
+  it("sends ChatGPT sharing off native Codex spawn_agent", () => {
+    const orchestration = orchestrationText(false);
+
+    NodeAssert.ok(orchestration.includes("ChatGPT sharing cannot run Codex `spawn_agent`"));
+    NodeAssert.ok(orchestration.includes("use `delegate_task` for Codex children"));
+    NodeAssert.ok(!orchestration.includes("Codex `spawn_agent`, then wait"));
   });
 });
 

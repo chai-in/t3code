@@ -24,7 +24,7 @@ it("maps streamed failures to safe actionable messages and reconnect decisions",
   );
   assert.include(
     classifyCodexManagedError("subscription_sharing_unsupported_capability")!.message,
-    "feature",
+    "native subagent",
   );
   assert.isUndefined(classifyCodexManagedError(undefined));
   assert.isUndefined(classifyCodexManagedError({ error: "unknown" }));
@@ -35,6 +35,7 @@ it("distinguishes unsupported tools from input items without exposing the raw re
   for (const [detail, expected] of [
     ["tool 'namespace' is not supported", "tool namespace"],
     ["input item 'additional_tools' is not supported", "input item"],
+    ["item type 'subAgentActivity' is not supported", "native subagent"],
   ]) {
     const response = { error: { code, message: `${detail}; dummy-sensitive` } };
     for (const value of [response, JSON.stringify(response)]) {

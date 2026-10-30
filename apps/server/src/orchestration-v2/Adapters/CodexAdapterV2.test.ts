@@ -247,6 +247,27 @@ describe("CodexAdapterV2 runtime policy", () => {
       assert.isDefined(withT3.additionalContext?.["t3_code_runtime"]);
     }),
   );
+
+  it.effect("omits native Codex spawn_agent guidance under ChatGPT sharing", () =>
+    Effect.gen(function* () {
+      const params = yield* CodexAdapterV2.buildCodexTurnStartParams({
+        nativeThreadId: "native-sharing",
+        codexInput: [{ type: "text", text: "test" }],
+        runtimePolicy: { runtimeMode: "full-access", interactionMode: "default", cwd: null },
+        modelSelection: { instanceId: ProviderInstanceId.make("codex"), model: "gpt-6-astra" },
+        hasT3Mcp: true,
+        nativeSubagentsAvailable: false,
+      });
+      const orchestration = Object.entries(params.additionalContext ?? {})
+        .filter(([key]) => key.startsWith("t3_code_orchestration_"))
+        .map(([, entry]) =>
+          typeof entry === "object" && entry !== null && "value" in entry ? String(entry.value) : "",
+        )
+        .join("\n");
+      assert.include(orchestration, "ChatGPT sharing cannot run Codex `spawn_agent`");
+      assert.notInclude(orchestration, "Codex `spawn_agent`, then wait");
+    }),
+  );
 });
 
 describe("CodexAdapterV2 native protocol logging", () => {

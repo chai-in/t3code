@@ -37,16 +37,31 @@ export interface CodexRuntimeInfo {
   readonly reasoningEffort?: string | undefined;
 }
 
+const CHATGPT_SHARING_BLOCKS_NATIVE_SPAWN =
+  "; Codex `spawn_agent`, then wait). Use `delegate_task` for another provider's model";
+const CHATGPT_SHARING_DELEGATE_INSTEAD =
+  "). ChatGPT sharing cannot run Codex `spawn_agent`; use `delegate_task` for Codex children, another provider's model";
+
+function orchestrationSections(nativeSubagents: boolean): ReadonlyArray<string> {
+  if (nativeSubagents) return T3_CODE_ORCHESTRATION_SECTIONS;
+  return T3_CODE_ORCHESTRATION_SECTIONS.map((section, index) =>
+    index === 0
+      ? section.replace(CHATGPT_SHARING_BLOCKS_NATIVE_SPAWN, CHATGPT_SHARING_DELEGATE_INSTEAD)
+      : section,
+  );
+}
+
 /** Keep this outside collaboration mode; model-catalog mode text overrides client developer_instructions. */
 export function buildCodexAdditionalContext(
   runtime: CodexRuntimeInfo,
   toolsAvailable: boolean | T3CodeToolAvailability = true,
+  options?: { readonly nativeSubagents?: boolean },
 ): Record<string, V2TurnStartParams__AdditionalContextEntry> {
   const tools = toolInstructions(toolsAvailable);
   // Split values to fit per-entry caps; number keys because Codex emits them in key order.
   return {
     ...Object.fromEntries(
-      T3_CODE_ORCHESTRATION_SECTIONS.map((section, index) => [
+      orchestrationSections(options?.nativeSubagents !== false).map((section, index) => [
         `t3_code_orchestration_${String(index + 1).padStart(2, "0")}`,
         { kind: "application" as const, value: section },
       ]),
