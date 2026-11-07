@@ -833,6 +833,79 @@ describe("PiAdapterV2", () => {
       }).pipe(Effect.scoped, Effect.provide(layerTest)),
   );
 
+  it.effect.each(["resume", "fork"] as const)(
+    "managed Pi rejects standalone session references before native %s",
+    (operation) =>
+      Effect.gen(function* () {
+        const external = yield* openRuntime(yield* makeFakePi);
+        const standaloneThread = yield* external.runtime.ensureThread({
+          threadId: THREAD_ID,
+          modelSelection: modelSelection("default"),
+          runtimePolicy,
+        });
+        const fake = yield* makeFakePi;
+        const forkFake = yield* makeFakePi;
+        const root = "/fake/.t3/provider-homes/pi/instance-7069/sessions";
+        const adapter = yield* makePiAdapterV2({
+          instanceId: PI_INSTANCE_ID,
+          settings: {
+            enabled: true,
+            runtime: "managed",
+            binaryPath: "pi",
+            launchArgs: "",
+            customModels: [],
+          },
+          environment: { PI_CODING_AGENT_SESSION_DIR: root },
+        }).pipe(
+          Effect.provideService(
+            ChildProcessSpawner.ChildProcessSpawner,
+            ChildProcessSpawner.make((command) =>
+              ChildProcess.isStandardCommand(command) && command.args.includes("--fork")
+                ? forkFake.spawner.spawn(command)
+                : fake.spawner.spawn(command),
+            ),
+          ),
+        );
+        const runtime = yield* adapter.openSession({
+          threadId: THREAD_ID,
+          providerSessionId: SESSION_ID,
+          modelSelection: modelSelection("default"),
+          runtimePolicy,
+        });
+        for (const file of [
+          FAKE_SESSION_FILE,
+          `${root}-other/session.jsonl`,
+          `${root}/../../outside.jsonl`,
+          "relative/session.jsonl",
+        ]) {
+          const source = {
+            ...standaloneThread,
+            nativeThreadRef: { ...standaloneThread.nativeThreadRef!, nativeId: file },
+          };
+          const exit = yield* (
+            operation === "resume"
+              ? runtime.resumeThread({ providerThread: source })
+              : runtime.forkThread({
+                  sourceProviderThread: source,
+                  targetThreadId: ThreadId.make("managed-fork"),
+                })
+          ).pipe(Effect.exit);
+          assert.isTrue(Exit.isFailure(exit));
+        }
+        assert.isFalse(fake.allRequests().some((request) => request["type"] === "switch_session"));
+        assert.isEmpty(forkFake.lastSpawn().args);
+        fake.queueState({ sessionFile: `${root}/new.jsonl` });
+        const managedThread = yield* runtime.ensureThread({
+          threadId: THREAD_ID,
+          modelSelection: modelSelection("default"),
+          runtimePolicy,
+        });
+        fake.queueState({ sessionFile: `${root}/new.jsonl` });
+        yield* runtime.resumeThread({ providerThread: managedThread });
+        assert.isTrue(fake.allRequests().some((request) => request["type"] === "switch_session"));
+      }).pipe(Effect.scoped, Effect.provide(layerTest)),
+  );
+
   it.effect("preserves extension statuses when a native session switch is vetoed", () =>
     Effect.gen(function* () {
       const fake = yield* makeFakePi;

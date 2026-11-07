@@ -31,6 +31,7 @@ import * as Option from "effect/Option";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
+import * as Path from "effect/Path";
 import * as Fiber from "effect/Fiber";
 import * as Queue from "effect/Queue";
 import * as Schema from "effect/Schema";
@@ -427,6 +428,7 @@ export const makePiAdapterV2 = Effect.fn("makePiAdapterV2")(function* (
   const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
   const agentScope = yield* AgentScope;
   const fileSystem = yield* FileSystem.FileSystem;
+  const pathService = yield* Path.Path;
   const idAllocator = yield* IdAllocator.IdAllocatorV2;
   const host = yield* ProviderHost.ProviderHost;
   const mcpSessions = yield* McpProviderSessions.McpProviderSessions;
@@ -438,6 +440,25 @@ export const makePiAdapterV2 = Effect.fn("makePiAdapterV2")(function* (
       detail,
       ...(payload === undefined ? {} : { payload }),
     });
+
+  const requireManagedSessionPath = Effect.fn("PiAdapter.requireManagedSessionPath")(function* (
+    file: string,
+  ) {
+    if (options.settings.runtime !== "managed") return;
+    const root = options.environment.PI_CODING_AGENT_SESSION_DIR;
+    const relative = root === undefined ? undefined : pathService.relative(root, file);
+    if (
+      relative === undefined ||
+      !pathService.isAbsolute(file) ||
+      pathService.isAbsolute(relative) ||
+      relative === ".." ||
+      relative.startsWith(`..${pathService.sep}`)
+    ) {
+      return yield* protocolError(
+        "Managed Pi cannot open sessions outside this instance's managed home. Select the external runtime to resume standalone sessions.",
+      );
+    }
+  });
 
   return ProviderAdapter.ProviderAdapterV2.of({
     instanceId: options.instanceId,
@@ -2440,6 +2461,7 @@ export const makePiAdapterV2 = Effect.fn("makePiAdapterV2")(function* (
         }
         const existing = threadInput.existingProviderThread;
         const resumeId = existing?.nativeThreadRef?.nativeId;
+        if (resumeId != null) yield* requireManagedSessionPath(resumeId);
         const needsNewSession = resumeId == null && registrationAttempted;
         registrationAttempted = true;
         if (resumeId != null || needsNewSession) {
@@ -2490,6 +2512,7 @@ export const makePiAdapterV2 = Effect.fn("makePiAdapterV2")(function* (
         if (nativeId === undefined) {
           return yield* protocolError("get_state returned no persisted sessionFile", stateData);
         }
+        yield* requireManagedSessionPath(nativeId);
         if (needsNewSession && nativeId === lastNativeThreadId) {
           return yield* protocolError("Pi did not create a distinct session file");
         }
@@ -3245,6 +3268,7 @@ export const makePiAdapterV2 = Effect.fn("makePiAdapterV2")(function* (
             const sourceFile = source.nativeThreadRef?.nativeId;
             if (sourceFile == null)
               return yield* protocolError("Pi fork source has no session file");
+            yield* requireManagedSessionPath(sourceFile);
             const sourceTurns = (forkInput.sourceProviderTurns ?? []).filter(
               (turn) => turn.providerThreadId === source.id,
             );
@@ -3607,6 +3631,7 @@ function piUiResponse(
 }
 
 export type PiAdapterV2DriverEnv =
+  | Path.Path
   | ChildProcessSpawner.ChildProcessSpawner
   | FileSystem.FileSystem
   | IdAllocator.IdAllocatorV2

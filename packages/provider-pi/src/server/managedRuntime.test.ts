@@ -124,14 +124,20 @@ const makeFixture = Effect.fn("managedRuntime.test.makeFixture")(function* (
       const version = command.args.includes("--version");
       if (!version) {
         const destination = String(command.args[command.args.indexOf("-C") + 1]!);
+        // Official Unix archives wrap the complete distribution in pi/; Windows ZIPs are flat.
+        const root =
+          platform === "win32" || command.args.includes("--strip-components=1")
+            ? destination
+            : path.join(destination, "pi");
+        yield* fs.makeDirectory(root, { recursive: true });
         yield* fs.writeFileString(
-          path.join(destination, platform === "win32" ? "pi.exe" : "pi"),
+          path.join(root, platform === "win32" ? "pi.exe" : "pi"),
           "native fixture",
         );
-        yield* fs.makeDirectory(path.join(destination, "assets"));
-        yield* fs.writeFileString(path.join(destination, "assets", "fixture"), "complete archive");
+        yield* fs.makeDirectory(path.join(root, "assets"));
+        yield* fs.writeFileString(path.join(root, "assets", "fixture"), "complete archive");
       } else {
-        assert.isTrue(yield* fs.exists(command.command));
+        assert.equal((yield* fs.stat(command.command)).type, "File");
         assert.isFalse(yield* fs.exists(runtimeDir));
         assert.equal(command.options.env?.PI_PACKAGE_DIR, path.dirname(command.command));
         verifications++;

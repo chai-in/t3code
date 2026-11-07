@@ -176,7 +176,13 @@ export const makeManagedPiRuntime = Effect.fn("Pi.makeManagedPiRuntime")(functio
         .exitCode(
           ChildProcess.make(
             windows ? path.join(systemRoot!, "System32", "tar.exe") : "tar",
-            [windows ? "-xf" : "-xzf", archive, "-C", extracted],
+            [
+              windows ? "-xf" : "-xzf",
+              archive,
+              "-C",
+              extracted,
+              ...(!windows ? ["--strip-components=1"] : []),
+            ],
             { env: environment },
           ),
         )

@@ -957,6 +957,45 @@ describe("ProviderInstanceRegistry secret environment", () => {
     }).pipe(Effect.scoped);
   });
 
+  it.effect("retries failed runtime preparation without secrets on explicit refresh", () =>
+    Effect.gen(function* () {
+      let attempts = 0;
+      const driver: AnyProviderDriver = {
+        driverKind,
+        metadata: { displayName: "Fake" },
+        configSchema: Schema.Unknown,
+        defaultConfig: () => ({}),
+        create: (input) =>
+          Effect.suspend(() => {
+            attempts++;
+            return attempts === 1
+              ? Effect.fail(
+                  new ProviderDriverError({
+                    driver: driverKind,
+                    instanceId: input.instanceId,
+                    detail: "Runtime download failed.",
+                  }),
+                )
+              : Effect.succeed({
+                  instanceId: input.instanceId,
+                  enabled: input.enabled,
+                } as ProviderInstance);
+          }),
+      };
+      const { registry, mutator } = yield* makeProviderInstanceRegistry({
+        drivers: [driver],
+        configMap: { [instanceId]: { driver: driverKind, config: {}, environment: [] } },
+      }).pipe(Effect.provide(Layer.mock(SecretResolver.SecretResolver)({})));
+      expect(yield* registry.getInstance(instanceId)).toBeUndefined();
+      expect(yield* registry.listUnavailable).toHaveLength(1);
+      yield* mutator.reloadSecrets(instanceId);
+      expect(yield* registry.getInstance(instanceId)).toBeDefined();
+      expect(yield* registry.listUnavailable).toEqual([]);
+      yield* mutator.reloadSecrets(instanceId);
+      expect(attempts).toBe(2);
+    }).pipe(Effect.scoped),
+  );
+
   it.effect("reads a config field typed SettingsSecretValue and rebuilds when it rotates", () => {
     const apiKey: SecretReference = { ...secret, reference: "op://Private/Gateway/key" };
     const fixture = setup(

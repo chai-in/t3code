@@ -508,18 +508,21 @@ export const makeProviderInstanceRegistry = Effect.fn(
     Effect.fn("ProviderInstanceRegistry.reloadSecrets")(
       function* (instanceId) {
         const configMap = yield* Ref.get(configMapRef);
+        const live = yield* Ref.get(entries);
         const targets = yield* Effect.filter(Object.entries(configMap), ([rawInstanceId, entry]) =>
           (instanceId === undefined || rawInstanceId === instanceId) &&
-          secretReferencesOf(driversById, entry).length > 0
+          (!live.has(ProviderInstanceId.make(rawInstanceId)) ||
+            secretReferencesOf(driversById, entry).length > 0)
             ? isEntryEnabled(driversById, entry)
             : Effect.succeed(false),
         );
         if (targets.length === 0) return;
         const resolver = yield* SecretResolver.SecretResolver;
         const references = targets.flatMap(([, entry]) => secretReferencesOf(driversById, entry));
-        yield* resolver.invalidate(references);
-        yield* resolver.read(references);
-        const live = yield* Ref.get(entries);
+        if (references.length > 0) {
+          yield* resolver.invalidate(references);
+          yield* resolver.read(references);
+        }
         const rebuild = new Set<ProviderInstanceId>();
         for (const [rawInstanceId, entry] of targets) {
           const current = live.get(ProviderInstanceId.make(rawInstanceId));
