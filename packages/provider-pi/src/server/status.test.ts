@@ -121,6 +121,7 @@ const piDiscoverySpawner = (
 
 const settings = {
   enabled: true,
+  runtime: "external",
   binaryPath: "pi",
   launchArgs: "",
   customModels: [],

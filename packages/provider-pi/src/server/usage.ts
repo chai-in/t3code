@@ -14,6 +14,8 @@ import {
 } from "@t3tools/provider-core/server/usage";
 import * as HostProcess from "@t3tools/shared/HostProcess";
 import type { PiSettings } from "../settings.ts";
+import * as ProviderHost from "@t3tools/provider-core/server/ProviderHost";
+import { managedPiHome } from "./managedHome.ts";
 import { PI_ARGUMENTS_WITH_VALUES, resolvePiLaunchArgs } from "./mcpInjection.ts";
 
 const PiScanState = Schema.Struct({ sessionId: Schema.mutableKey(Schema.String) });
@@ -125,12 +127,20 @@ export const piUsageFormat: TranscriptUsageFormat<typeof PiScanState.Type> = {
   state: { initial: () => ({ sessionId: "" }), schema: PiScanState },
 };
 
-export const piUsageReader: ProviderUsageReader<PiSettings, Path.Path> = {
+export const piUsageReader = {
   kind: "transcripts",
   provider: "pi",
   format: piUsageFormat,
-  directories: Effect.fn("piUsageReader.directories")(function* ({ config, environment }) {
+  directories: Effect.fn("piUsageReader.directories")(function* ({
+    instanceId,
+    config,
+    environment,
+  }) {
     const path = yield* Path.Path;
+    if (config?.runtime === "managed") {
+      const host = yield* ProviderHost.ProviderHost;
+      return [{ dir: path.join(managedPiHome(host.paths.baseDir, instanceId, path), "sessions") }];
+    }
     const home = yield* HostProcess.HomeDirectory;
     const platform = yield* HostProcess.Platform;
     const launchHome = (platform === "win32" ? environment.USERPROFILE : environment.HOME) || home;
@@ -145,7 +155,7 @@ export const piUsageReader: ProviderUsageReader<PiSettings, Path.Path> = {
       { dir: resolvePiSessionsDir(environment, home, path) },
     ];
   }),
-};
+} satisfies ProviderUsageReader<PiSettings, Path.Path | ProviderHost.ProviderHost>;
 
 function piLaunchSessionDir(launchArgs: string): string | undefined {
   const resolved = resolvePiLaunchArgs(launchArgs);

@@ -1,4 +1,3 @@
-// User-wide ~/.pi/agent state makes continuation identity use default instance grouping.
 import { ProviderDriverKind, type ServerProvider } from "@t3tools/contracts";
 import { PiSettings } from "../settings.ts";
 import * as Effect from "effect/Effect";
@@ -12,6 +11,8 @@ import * as ProviderLatestVersions from "@t3tools/provider-core/server/ProviderL
 import * as ProviderHost from "@t3tools/provider-core/server/ProviderHost";
 import { piUsageReader } from "./usage.ts";
 import { makePiTextGeneration } from "./textGeneration.ts";
+import { makeManagedPiRuntime, PINNED_PI_VERSION } from "./managedRuntime.ts";
+import { resolvePiLaunchArgs } from "./mcpInjection.ts";
 import { PiAdapterV2Driver, type PiAdapterV2DriverEnv } from "./adapter.ts";
 import { ProviderDriverError } from "@t3tools/provider-core/server/errors";
 import {
@@ -73,7 +74,11 @@ const withInstanceIdentity =
     continuation: { groupKey: input.continuationGroupKey },
   });
 
-export const PiDriver: ProviderDriver<PiSettings, PiDriverEnv, Path.Path> = {
+export const PiDriver: ProviderDriver<
+  PiSettings,
+  PiDriverEnv,
+  Path.Path | ProviderHost.ProviderHost
+> = {
   driverKind: DRIVER_KIND,
   metadata: {
     displayName: "Pi",
@@ -97,7 +102,52 @@ export const PiDriver: ProviderDriver<PiSettings, PiDriverEnv, Path.Path> = {
     const latestVersions = yield* ProviderLatestVersions.ProviderLatestVersions;
     const host = yield* ProviderHost.ProviderHost;
     const { cwd } = host.paths;
-    const processEnv = yield* mergeProviderInstanceEnvironment(environment);
+    const inheritedEnv = yield* mergeProviderInstanceEnvironment(environment);
+    if (enabled && config.runtime === "managed") {
+      const launch = resolvePiLaunchArgs(config.launchArgs);
+      if (launch.ok && launch.args.includes("--session-dir")) {
+        return yield* new ProviderDriverError({
+          driver: DRIVER_KIND,
+          instanceId,
+          detail:
+            "Managed Pi owns session storage. Remove --session-dir or select the external runtime.",
+        });
+      }
+    }
+    const managedRuntime =
+      enabled && config.runtime === "managed"
+        ? yield* makeManagedPiRuntime({ instanceId }).pipe(
+            Effect.mapError(
+              (cause) =>
+                new ProviderDriverError({
+                  driver: DRIVER_KIND,
+                  instanceId,
+                  detail:
+                    cause.stage === "platform"
+                      ? "Managed Pi supports Windows, macOS, and Linux on x64 or arm64. Use the external runtime on this machine."
+                      : cause.stage === "cache"
+                        ? "Managed Pi's runtime cache is incomplete. Stop Pi threads, remove only its versioned runtime directory, then refresh Pi. Its separate agent home is preserved."
+                        : `Could not prepare T3 Code's managed Pi runtime (${cause.stage}). Refresh Pi to retry.`,
+                  cause,
+                }),
+            ),
+          )
+        : undefined;
+    const managedEnvironment = managedRuntime
+      ? {
+          PI_CODING_AGENT_DIR: managedRuntime.environment.PI_CODING_AGENT_DIR,
+          PI_CODING_AGENT_SESSION_DIR: managedRuntime.environment.PI_CODING_AGENT_SESSION_DIR,
+          PI_PACKAGE_DIR: managedRuntime.environment.PI_PACKAGE_DIR,
+          PI_SELF_UPDATE_COMMAND: managedRuntime.environment.PI_SELF_UPDATE_COMMAND,
+        }
+      : {};
+    const processEnv = { ...inheritedEnv, ...managedEnvironment };
+    const runtimeEnvironment = [
+      ...environment,
+      ...Object.entries(managedEnvironment).flatMap(([name, value]) =>
+        value === undefined ? [] : [{ name, value, sensitive: false }],
+      ),
+    ];
     const continuationIdentity = defaultProviderContinuationIdentity({
       driverKind: DRIVER_KIND,
       instanceId,
@@ -108,25 +158,36 @@ export const PiDriver: ProviderDriver<PiSettings, PiDriverEnv, Path.Path> = {
       accentColor,
       continuationGroupKey: continuationIdentity.continuationKey,
     });
-    const effectiveConfig = { ...config, enabled } satisfies PiSettings;
+    const effectiveConfig = {
+      ...config,
+      enabled,
+      ...(managedRuntime ? { binaryPath: managedRuntime.binaryPath } : {}),
+    } satisfies PiSettings;
     const resolveMaintenance = yield* makeCachedProviderMaintenanceResolution(
-      resolveProviderMaintenanceCapabilitiesEffect(UPDATE, {
-        binaryPath: effectiveConfig.binaryPath,
-        env: processEnv,
-      }).pipe(
-        Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
-        Effect.provideService(FileSystem.FileSystem, fileSystem),
-        Effect.provideService(Path.Path, pathService),
-      ),
+      config.runtime === "managed"
+        ? Effect.succeed({
+            provider: DRIVER_KIND,
+            packageName: null,
+            update: null,
+            latestVersion: PINNED_PI_VERSION,
+          })
+        : resolveProviderMaintenanceCapabilitiesEffect(UPDATE, {
+            binaryPath: effectiveConfig.binaryPath,
+            env: processEnv,
+          }).pipe(
+            Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
+            Effect.provideService(FileSystem.FileSystem, fileSystem),
+            Effect.provideService(Path.Path, pathService),
+          ),
     );
 
     const orchestrationAdapter = yield* PiAdapterV2Driver.create({
       instanceId,
       displayName,
       accentColor,
-      environment,
+      environment: runtimeEnvironment,
       enabled,
-      config,
+      config: effectiveConfig,
     }).pipe(
       Effect.mapError(
         (cause) =>

@@ -505,7 +505,9 @@ export const checkPiProviderStatus = Effect.fn("checkPiProviderStatus")(function
   const discovery = discoveryExit.value.value;
   const models = piModelsFromSettings(piSettings.customModels, discovery.models);
   const message = !discovery.authenticated
-    ? "Pi has no usable models. Run `pi` in a terminal and use /login, or configure an API key in ~/.pi/agent."
+    ? piSettings.runtime === "managed"
+      ? "Pi has no usable models. Add model-provider credentials in this instance's settings or configure its T3-managed Pi agent directory."
+      : "Pi has no usable models. Run `pi` in a terminal and use /login, or configure an API key in ~/.pi/agent."
     : discovery.unavailableActiveModel === undefined
       ? undefined
       : yield* describeUnavailablePiModel(

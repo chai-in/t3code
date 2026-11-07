@@ -3,6 +3,10 @@ import { assert, it } from "@effect/vitest";
 import { DEFAULT_SERVER_SETTINGS, ProviderInstanceId } from "@t3tools/contracts";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
+import * as FileSystem from "effect/FileSystem";
+import * as Path from "effect/Path";
+import * as HostProcess from "@t3tools/shared/HostProcess";
+import * as ProviderHost from "@t3tools/provider-core/server/ProviderHost";
 import * as Layer from "effect/Layer";
 import * as Queue from "effect/Queue";
 import * as Schema from "effect/Schema";
@@ -18,6 +22,7 @@ import * as McpProviderSessions from "@t3tools/provider-core/server/McpProviderS
 import * as TestProviderHost from "@t3tools/provider-testing/TestProviderHost";
 import type { PiSettings } from "../settings.ts";
 import { PiDriver } from "./driver.ts";
+import { piUsageReader } from "./usage.ts";
 
 const layerTest = Layer.mergeAll(
   TestProviderHost.layer({
@@ -45,7 +50,11 @@ const personalSkill = {
 };
 
 const makePiSpawner = Effect.fnUntraced(function* (
-  discovery: { readonly state?: unknown; readonly models?: ReadonlyArray<unknown> } = {},
+  discovery: {
+    readonly state?: unknown;
+    readonly models?: ReadonlyArray<unknown>;
+    readonly version?: string;
+  } = {},
 ) {
   const pendingCommand = yield* Deferred.make<void>();
   const launches: Array<ChildProcess.StandardCommand> = [];
@@ -102,7 +111,9 @@ const makePiSpawner = Effect.fnUntraced(function* (
             ),
           ).pipe(Effect.asVoid);
         }),
-        stdout: version ? Stream.succeed(encoder.encode("pi 1.0.2\n")) : Stream.fromQueue(stdout),
+        stdout: version
+          ? Stream.succeed(encoder.encode(`pi ${discovery.version ?? "1.0.2"}\n`))
+          : Stream.fromQueue(stdout),
         stderr: Stream.empty,
         all: Stream.empty,
         getInputFd: () => Sink.drain,
@@ -124,8 +135,69 @@ const create = (config: Partial<PiSettings> = {}, enabled = true) =>
   });
 
 it.layer(layerTest)("PiDriver workspace discovery", (it) => {
+  it.effect("uses the pinned runtime and isolated home for every managed discovery process", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const host = yield* ProviderHost.ProviderHost;
+      const runtimeDir = path.join(host.paths.baseDir, "providers", "pi", "1.5.0", "linux-x64");
+      yield* fs.makeDirectory(runtimeDir, { recursive: true });
+      yield* fs.writeFileString(path.join(runtimeDir, "pi"), "fixture");
+      yield* fs.writeFileString(
+        path.join(runtimeDir, ".ready"),
+        "1.5.0\nlinux-x64\ndf870ba0e344cb7b3358d8d8f19397b8b8d225a8669784736ad68a5c2169d53b\n58876253\n",
+      );
+      const { spawner, launches } = yield* makePiSpawner({ version: "1.5.0" });
+      const instance = yield* create({ runtime: "managed" }).pipe(
+        Effect.provideService(HostProcess.Platform, "linux"),
+        Effect.provideService(HostProcess.Architecture, "x64"),
+        Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
+      );
+      yield* instance.snapshot.refresh;
+      const snapshot = yield* instance.snapshotForCwd!("/first");
+      assert.equal(snapshot.version, "1.5.0");
+      assert.equal(snapshot.auth.status, "authenticated");
+      const maintenance = yield* instance.snapshot.resolveMaintenance();
+      assert.isNull(maintenance.update);
+      assert.equal(maintenance.latestVersion, "1.5.0");
+      assert.isAbove(launches.length, 1);
+      const agentDir = path.join(
+        host.paths.baseDir,
+        "provider-homes",
+        "pi",
+        "instance-70692d776f726b73706163652d74657374",
+      );
+      for (const launch of launches) {
+        assert.equal(launch.command, path.join(runtimeDir, "pi"));
+        assert.equal(launch.options.env?.PI_CODING_AGENT_DIR, agentDir);
+        assert.equal(
+          launch.options.env?.PI_CODING_AGENT_SESSION_DIR,
+          path.join(agentDir, "sessions"),
+        );
+      }
+      const directories = yield* piUsageReader.directories({
+        instanceId: instance.instanceId,
+        config: { ...PiDriver.defaultConfig(), runtime: "managed" },
+        environment: { PI_CODING_AGENT_DIR: "/external-home" },
+        configured: true,
+      });
+      assert.deepEqual(directories, [{ dir: path.join(agentDir, "sessions") }]);
+    }).pipe(Effect.scoped),
+  );
+
+  it.effect.each(["--session-dir /external-sessions", "--session-dir=/external-sessions"])(
+    "rejects managed session storage overrides before installing: %s",
+    (launchArgs) =>
+      Effect.gen(function* () {
+        const error = yield* create({ runtime: "managed", launchArgs }).pipe(Effect.flip);
+        assert.equal(error._tag, "ProviderDriverError");
+        assert.include(error.detail, "Managed Pi owns session storage");
+      }).pipe(Effect.scoped),
+  );
+
   it.effect("keeps each workspace's skills and commands separate from the machine catalog", () =>
     Effect.gen(function* () {
+      assert.equal(PiDriver.defaultConfig().runtime, "external");
       const { spawner, launches } = yield* makePiSpawner();
       const instance = yield* create({ launchArgs: '--approve --skill "extra skill"' }).pipe(
         Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
@@ -185,7 +257,7 @@ it.layer(layerTest)("PiDriver workspace discovery", (it) => {
 
   it.effect("does not run a disabled provider's workspace probe", () =>
     Effect.gen(function* () {
-      const instance = yield* create({}, false).pipe(
+      const instance = yield* create({ runtime: "managed" }, false).pipe(
         Effect.provideService(
           ChildProcessSpawner.ChildProcessSpawner,
           ChildProcessSpawner.make(() => Effect.die("Disabled Pi must not spawn")),

@@ -14,10 +14,18 @@ export const PiSettings = makeProviderSettingsSchema(
       Schema.withDecodingDefault(Effect.succeed(false)),
       Schema.annotateKey({ providerSettingsForm: { hidden: true } }),
     ),
+    runtime: Schema.Literals(["managed", "external"]).pipe(
+      Schema.withDecodingDefault(Effect.succeed("external")),
+      Schema.annotateKey({
+        title: "Runtime",
+        description:
+          "Managed downloads the official, compatibility-pinned Pi release into T3 Code. External uses your own Pi installation and configuration.",
+      }),
+    ),
     binaryPath: makeBinaryPathSetting("pi").pipe(
       Schema.annotateKey({
         title: "Binary path",
-        description: "Path to the Pi coding agent binary.",
+        description: "Path to the Pi coding agent binary when Runtime is external.",
         providerSettingsForm: { placeholder: "pi", clearWhenEmpty: "omit" },
       }),
     ),
@@ -35,7 +43,7 @@ export const PiSettings = makeProviderSettingsSchema(
     ),
   },
   {
-    order: ["binaryPath", "launchArgs"],
+    order: ["runtime", "binaryPath", "launchArgs"],
   },
 );
 export type PiSettings = typeof PiSettings.Type;

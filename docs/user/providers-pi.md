@@ -1,37 +1,51 @@
 # Pi
 
-T3 Code can use your existing Pi coding agent installation while keeping Pi's models, auth,
-extensions, skills, context files, and native session history.
+T3 Code can download an official, compatibility-pinned [Pi](https://pi.dev) runtime. You do not need
+a standalone Pi, Node.js, or npm installation to use the managed runtime. Existing installations
+continue using external Pi until you choose managed mode.
 
 ## Set Up Pi
 
-1. Install [Pi](https://pi.dev) on the machine running the T3 Code server. Pi requires Node.js
-   22.19 or newer; its platform installers can install Node if needed. T3 Code supports Pi
-   0.80.5 or newer.
-2. Run `pi` in a terminal, then `/login` to connect your model provider or configure its API key.
-3. Open T3 Code Settings, enable Pi, and refresh the provider.
+1. Open T3 Code Settings, enable Pi, and select **managed** for **Runtime**.
+2. Allow the first download to finish on the machine running the T3 Code server. T3 Code verifies
+   the official release checksum and version before using it. Later launches work without downloading
+   the runtime again.
+3. Add your model provider's API-key environment variable to the Pi instance; mark it sensitive.
+   Refresh Pi, then choose its model in a thread.
 
-For an npm installation, use:
+The managed runtime is pinned to Pi 1.5.0. It updates with T3 Code, not through `pi update` or the
+provider updater. Managed downloads support Windows, macOS, and Linux on x64 and arm64. On Windows,
+Pi's Bash tool still needs Git Bash; the runtime does not install a shell or sandbox tools.
 
-```sh
-npm install -g --ignore-scripts @earendil-works/pi-coding-agent
-```
+Each managed Pi instance has its own configuration, authentication, extensions, trust decisions,
+and native sessions under `<T3 home>/provider-homes/pi/instance-<hex-encoded instance ID>` (the default
+`pi` instance uses `instance-7069`). It does not read or modify
+`~/.pi/agent`, change your shell's `PATH`, or import credentials automatically. To configure a custom
+endpoint, put Pi's `models.json` in that instance's directory. To use Pi's interactive `/login`, run
+the managed executable on the server with `PI_CODING_AGENT_DIR` set to the instance directory.
+Runtime files are under `<T3 home>/providers/pi/1.5.0/<platform>-<architecture>`; use `pi.exe` on
+Windows and `pi` elsewhere. Stop Pi threads before changing its authentication or configuration.
 
-If `pi` is not on the server's `PATH`, set Pi's binary path to the executable. Provider environment
-variables and launch arguments are also available for installations that need a custom agent
-directory, endpoint, or model configuration. `--provider` must be paired with `--model`. T3 Code
-rejects launch arguments that change Pi's execution mode or select a session because T3 owns those
-parts of the process lifecycle.
+For a remote or headless server, run the executable on that server over SSH. Open its authorization
+URL on your own computer. If the callback cannot reach the server, paste the final redirect URL or
+authorization code back into Pi when prompted. Do not copy live OAuth stores between machines.
 
-On a remote or headless server, connect to that machine over SSH and run `pi`, then `/login`.
-Open the authorization URL on your own computer. If the callback cannot reach the server,
-paste the final redirect URL or authorization code back into Pi when prompted. You can also
-set your model provider's API-key environment variable in the Pi instance's settings; mark
-secret values as sensitive.
+### Use an existing installation
 
-Update installer-managed Pi with `pi update`. If another package manager owns the installation,
-update it through that manager instead. For example, a Nix profile installation uses
-`nix profile upgrade pi`.
+Select **external** for Runtime and set the binary path if `pi` is not on the server's `PATH`.
+External mode supports Pi 0.80.5 or newer and uses your usual `~/.pi/agent` configuration, unless
+provider environment variables override it. For example, set `PI_CODING_AGENT_DIR` to use a custom
+agent directory. Update external Pi through the installer or package manager that owns it.
+
+Switching runtimes does not copy native sessions or credentials. Keep the external installation and
+agent directory until you have verified a new managed thread. To resume an external native session,
+switch that instance back to external mode. Portable conversation handoff is available when changing
+provider instances.
+
+Provider launch arguments remain available in either mode. `--provider` must be paired with `--model`.
+T3 Code rejects arguments that change Pi's execution mode or select a session because T3 owns those
+parts of the process lifecycle. Managed mode also reserves `--session-dir` to keep sessions within
+the instance's agent directory; external mode supports custom session directories.
 
 ## What Carries Over
 
@@ -77,7 +91,8 @@ threads.
 
 - If Pi is unavailable, confirm that the configured binary runs on the server machine, then refresh
   the provider in Settings.
-- If no models appear, open Pi directly and confirm its authentication and model configuration.
+- If no models appear, confirm authentication and model configuration in the selected runtime's
+  agent directory. Standalone Pi's credentials are separate from managed Pi's credentials.
 - If discovery cannot complete, T3 Code keeps Pi available with the `Pi default` model. Start a
   thread to let the interactive Pi session handle any startup prompt.
 - If Pi skips project settings, extensions, skills, prompts, MCP servers, or system prompt files
