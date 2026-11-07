@@ -41,8 +41,8 @@ import { LocalEnvironmentSetting } from "./LocalEnvironmentSetting";
 import { searchableSetting } from "./settingsSearch";
 import { EnvironmentIconMenu } from "./EnvironmentIconPicker";
 import { FoldedSettingsSection } from "./FoldedSettingsSection";
-import { LinkedEnvironmentsSettings } from "./LinkedEnvironmentsSettings";
-import { usePeerLinkHosts } from "~/state/peerLinks";
+import { EnvironmentAgentAccess } from "./LinkedEnvironmentsSettings";
+import { EnvironmentRow } from "./EnvironmentRow";
 import { LoadBalancingSettings } from "./LoadBalancingSettings";
 import { PullRequestRoutingSettings } from "./PullRequestRoutingSettings";
 import { Input } from "../ui/input";
@@ -251,7 +251,6 @@ function ConnectionsSettingsContent({
   const desktopBridge = window.desktopBridge;
   const { environments } = useEnvironments();
   const primaryEnvironment = usePrimaryEnvironment();
-  const peerLinkHosts = usePeerLinkHosts();
   const removeEnvironment = useAtomCommand(environmentCatalog.remove, { reportFailure: false });
   const setEnvironmentEnabled = useAtomCommand(environmentCatalog.setEnabled, {
     reportFailure: false,
@@ -272,6 +271,12 @@ function ConnectionsSettingsContent({
   const listedEnvironments = savedEnvironments.filter(
     (environment) => !isDesktopLocalConnectionTarget(environment.entry.target),
   );
+  const localEnvironments = [
+    ...(primaryEnvironment ? [primaryEnvironment] : []),
+    ...savedEnvironments.filter((environment) =>
+      isDesktopLocalConnectionTarget(environment.entry.target),
+    ),
+  ];
   const savedUpdateStates = useAtomValue(
     environmentUpdateStatesAtom(
       environmentIdsKey(savedEnvironments.map(({ environmentId }) => environmentId)),
@@ -1615,6 +1620,20 @@ function ConnectionsSettingsContent({
           </div>
         }
       >
+        {localEnvironments.map((environment) => (
+          <EnvironmentRow
+            key={environment.environmentId}
+            kind={resolveEnvironmentMachineKind(environment.serverConfig)}
+            label={environment.label}
+            subtitle={environment.connection.phase === "connected" ? "Connected" : "Offline"}
+            detail={
+              <EnvironmentAgentAccess
+                environmentId={environment.environmentId}
+                environmentLabel={environment.label}
+              />
+            }
+          />
+        ))}
         {listedEnvironments.map((environment) => (
           <SavedBackendListRow
             key={environment.environmentId}
@@ -1646,14 +1665,6 @@ function ConnectionsSettingsContent({
           }}
         />
       ) : null}
-      {peerLinkHosts.map((environment, index) => (
-        <LinkedEnvironmentsSettings
-          key={environment.environmentId}
-          environmentId={environment.environmentId}
-          environmentLabel={peerLinkHosts.length > 1 ? environment.label : null}
-          isSearchTarget={index === 0}
-        />
-      ))}
       <LoadBalancingSettings environments={loadBalancingEnvironments} />
       <PullRequestRoutingSettings environments={loadBalancingEnvironments} />
     </SettingsPageContainer>

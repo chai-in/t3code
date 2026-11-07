@@ -36,6 +36,7 @@ import {
 } from "./ConnectionDiagnosisDetails";
 import { usePreparedConnection } from "~/state/session";
 import { EnvironmentRow, environmentTransportLabel } from "./EnvironmentRow";
+import { EnvironmentAgentAccess } from "./LinkedEnvironmentsSettings";
 import { Menu, MenuItem, MenuPopup, MenuSeparator, MenuTrigger } from "../ui/menu";
 import { Switch } from "../ui/switch";
 import { stackedThreadToast, toastManager } from "../ui/toast";
@@ -352,6 +353,10 @@ export function SavedBackendListRow({
               />
             </div>
           )}
+          <EnvironmentAgentAccess
+            environmentId={environmentId}
+            environmentLabel={environment.label}
+          />
         </>
       }
     >

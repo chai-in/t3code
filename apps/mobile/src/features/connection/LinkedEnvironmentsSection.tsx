@@ -13,10 +13,7 @@ import { useEnvironmentQuery } from "../../state/query";
 import { useEnvironmentScope } from "../../state/session";
 import { SettingsSection } from "../settings/components/SettingsSection";
 
-export function LinkedEnvironmentsSection(props: {
-  readonly environmentId: EnvironmentId;
-  readonly environmentLabel: string;
-}) {
+export function LinkedEnvironmentsSection(props: { readonly environmentId: EnvironmentId }) {
   const config = useEnvironmentServerConfig(props.environmentId);
   const canRead = useEnvironmentScope(props.environmentId, AuthAccessReadScope);
   const supported = canRead && offersLinkedEnvironments(config);
@@ -43,8 +40,11 @@ export function LinkedEnvironmentsSection(props: {
   if (!supported || links.error || !links.data || links.data.links.length === 0) return null;
   const now = DateTime.makeUnsafe(nowMs);
   return (
-    <View className="mt-5 gap-3">
-      <SettingsSection title={`Linked from ${props.environmentLabel}`}>
+    <View className="gap-3">
+      <Text className="text-xs text-foreground-muted">
+        Agents on this machine can work in these environments.
+      </Text>
+      <SettingsSection title="Agent access">
         {links.data.links.map((link) => {
           const health = peerLinkHealth(link, now);
           const status =

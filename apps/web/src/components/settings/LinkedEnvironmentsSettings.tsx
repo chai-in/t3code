@@ -1,6 +1,7 @@
 import { useAtomValue } from "@effect/atom-react";
 import { linkRequestFailureMessage } from "@t3tools/client-runtime/link-request";
 import {
+  AuthAccessReadScope,
   AuthAccessWriteScope,
   type AuthMcpClientAccess,
   type EnvironmentId,
@@ -14,12 +15,16 @@ import { peerLinkHealth } from "@t3tools/client-runtime/state/peerLinks";
 import * as DateTime from "effect/DateTime";
 import * as Option from "effect/Option";
 import * as Result from "effect/Result";
-import { PlusIcon } from "lucide-react";
+import { ChevronRightIcon, PlusIcon } from "lucide-react";
 import { useId, useRef, useState } from "react";
 
 import { requestConfirmDialog } from "~/confirmDialog";
 import { mintPairingCodeOn } from "~/state/peerPairingCode";
-import { peerLinkEnvironment, useLinkableMachines } from "~/state/peerLinks";
+import {
+  offersLinkedEnvironmentsAtom,
+  peerLinkEnvironment,
+  useLinkableMachines,
+} from "~/state/peerLinks";
 import { useEnvironmentQuery } from "~/state/query";
 import { useEnvironmentScope, usePreparedConnection } from "~/state/session";
 import { useAtomCommand } from "~/state/use-atom-command";
@@ -42,39 +47,70 @@ import { stackedThreadToast, toastManager } from "../ui/toast";
 import { ITEM_ROW_CLASSNAME, ITEM_ROW_INNER_CLASSNAME } from "./itemRows";
 import { LinkAccessPicker } from "./LinkAccessPicker";
 import { ANOTHER_ADDRESS, LinkMachineSelect } from "./LinkMachineSelect";
-import { SettingsRow, SettingsSection } from "./settingsLayout";
+import { SettingsRow } from "./settingsLayout";
 import { useNowMinute } from "../../hooks/useNowMinute";
-import { searchableSetting } from "./settingsSearch";
 
 const failureToast = (title: string, description: string) =>
   toastManager.add(stackedThreadToast({ type: "error", title, description }));
 
-export function LinkedEnvironmentsSettings({
+export function EnvironmentAgentAccess({
   environmentId,
   environmentLabel,
-  isSearchTarget,
 }: {
   readonly environmentId: EnvironmentId;
-  readonly environmentLabel: string | null;
-  readonly isSearchTarget: boolean;
+  readonly environmentLabel: string;
+}) {
+  const supported = useAtomValue(offersLinkedEnvironmentsAtom(environmentId));
+  const canRead = useEnvironmentScope(environmentId, AuthAccessReadScope);
+  const [open, setOpen] = useState(false);
+  if (!supported || !canRead) return null;
+  return (
+    <div className="mt-1">
+      <Button
+        variant="ghost-muted"
+        size="xs"
+        aria-label={`Agent access from ${environmentLabel}`}
+        aria-expanded={open}
+        aria-controls={`agent-access-${environmentId}`}
+        onClick={() => setOpen((value) => !value)}
+      >
+        <ChevronRightIcon className={open ? "size-3 rotate-90" : "size-3"} />
+        Agent access
+      </Button>
+      {open ? (
+        <div id={`agent-access-${environmentId}`} className="mt-2 border-t border-border/50">
+          <AgentAccessDetails environmentId={environmentId} environmentLabel={environmentLabel} />
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function AgentAccessDetails({
+  environmentId,
+  environmentLabel,
+}: {
+  readonly environmentId: EnvironmentId;
+  readonly environmentLabel: string;
 }) {
   const links = useEnvironmentQuery(peerLinkEnvironment.list({ environmentId, input: {} }));
   const canLink = useAtomValue(peerLinkEnvironment.link.permissionAtom(environmentId));
-  const search = searchableSetting("linked-environments");
   return (
-    <SettingsSection
-      {...(isSearchTarget ? { id: search.id } : {})}
-      title={environmentLabel === null ? search.title : `${search.title} · ${environmentLabel}`}
-      headerAction={canLink ? <LinkEnvironmentAction environmentId={environmentId} /> : null}
-    >
+    <div>
+      <div className="flex items-center justify-between gap-3 py-3">
+        <p className="text-xs text-muted-foreground">
+          Agents on {environmentLabel} can work in the environments linked here.
+        </p>
+        {canLink ? <LinkEnvironmentAction environmentId={environmentId} /> : null}
+      </div>
       {links.error ? (
         <SettingsRow title="Could not load linked environments" description={links.error} />
       ) : !links.data ? (
         <SettingsRow title="Loading linked environments…" role="status" />
       ) : links.data.links.length === 0 ? (
         <SettingsRow
-          title="No linked environments"
-          description="Link another machine running T3 Code, such as a VPS, so agents here can launch and drive threads there."
+          title="No agent access configured"
+          description="Link another environment to let agents on this machine work there."
         />
       ) : (
         links.data.links.map((link) => (
@@ -85,7 +121,7 @@ export function LinkedEnvironmentsSettings({
           />
         ))
       )}
-    </SettingsSection>
+    </div>
   );
 }
 

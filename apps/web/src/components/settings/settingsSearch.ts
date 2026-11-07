@@ -1259,10 +1259,12 @@ export const SETTINGS_SEARCH_ITEMS = [
   {
     id: "linked-environments",
     peerLinksOnly: true,
-    title: "Linked environments",
+    title: "Agent access",
     to: "/settings/connections",
-    targetId: "linked-environments",
-    searchTerms: ["link peer another machine vps agents work there handoff pairing code"],
+    targetId: "remote-environments",
+    searchTerms: [
+      "linked environments link peer another machine vps agents work there handoff pairing code",
+    ],
   },
   {
     id: "remote-environments",

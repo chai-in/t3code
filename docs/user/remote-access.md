@@ -331,8 +331,9 @@ off on either machine, agents start nothing over a link between them. A task
 already running on the other machine still finishes, and if that machine has it
 off, its result arrives once it is back on.
 
-On the machine you will work from, open **Settings → Environments → Linked environments**,
-choose **Link**, and pick the other machine or enter its address. The list
+On the machine you will work from, open **Settings → Environments**, expand
+**Agent access** on that machine, choose **Link**, and pick the other machine
+or enter its address. On mobile, open a machine's details to see its agent access. The list
 holds the machines this app knows and those on your T3 Connect account. If this
 app is connected to that machine with a session that manages access there, it
 makes the pairing code itself; otherwise paste one from that machine's

@@ -24,6 +24,7 @@ import { ConnectionDiagnosisDetails, useConnectionDiagnosis } from "./Connection
 import { ConnectionFormField } from "./ConnectionFormField";
 import { ConnectionStatusDot } from "./ConnectionStatusDot";
 import { environmentStatusText } from "./environmentStatusText";
+import { LinkedEnvironmentsSection } from "./LinkedEnvironmentsSection";
 
 function connectionStatusLabel(environment: ConnectedEnvironmentSummary): string | null {
   if (!environment.isEnabled && environment.connectionState !== "unsupported") {
@@ -153,6 +154,9 @@ export function ConnectionEnvironmentRow(props: {
                 />
               ) : null}
             </Text>
+          ) : null}
+          {props.environment.connectionState === "connected" ? (
+            <LinkedEnvironmentsSection environmentId={props.environment.environmentId} />
           ) : null}
           {freeze ? (
             <Text
